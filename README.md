@@ -28,7 +28,7 @@ correct, well-understood implementation over comprehensive features.
 ## Features
 
 - [x] Video metadata extraction (resolution, framerate, bitrate, duration) via `ffprobe`
-- [ ] Resolution ladder generation, capped to source resolution
+- [x] Resolution ladder generation, capped to source resolution
 - [ ] HLS transcoding pipeline (multiple renditions via `ffmpeg`)
 - [ ] HLS manifest generation (master + per-rendition playlists)
 - [ ] HTTP server for manifests and segments
