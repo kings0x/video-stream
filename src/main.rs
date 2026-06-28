@@ -1,5 +1,7 @@
 mod ladder;
+mod manifest;
 mod probe;
+mod server;
 mod transcode;
 use std::env;
 use std::path::{Path, PathBuf};
@@ -7,6 +9,7 @@ use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
 use crate::ladder::build_ladder_from_meta;
+use crate::manifest::write_master_playlist;
 use crate::probe::ProbeError;
 use crate::transcode::{TranscodeError, transcode_all};
 
@@ -26,9 +29,12 @@ async fn main() -> Result<(), ProbeError> {
             let renditions = build_ladder_from_meta(&video_meta);
             let job_id = Uuid::new_v4().to_string();
 
-            let paths = transcode_all(path.to_path_buf(), job_id, renditions).await;
+            let paths = transcode_all(path.to_path_buf(), job_id.clone(), renditions.clone()).await;
 
             handle_failures(&paths);
+
+            write_master_playlist(&job_id, &renditions)
+                .map_err(|e| ProbeError::ParseError(e.to_string()))?;
         }
         Err(e) => {
             eprintln!("Error Occured: {}", e)
