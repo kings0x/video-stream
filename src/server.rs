@@ -1,5 +1,11 @@
 use anyhow::Result;
-use axum::{Router, routing::get, serve};
+use axum::{Router, serve};
+use axum::{
+    extract::Request,
+    http::{HeaderValue, header},
+    middleware::{self, Next},
+    response::Response,
+};
 use tokio::net::TcpListener;
 use tower_http::services::ServeDir;
 
@@ -27,7 +33,9 @@ impl Server {
 }
 
 pub fn build_router() -> Router {
-    let srv = Router::new().nest_service("/streams", ServeDir::new(".output"));
+    let srv = Router::new()
+        .nest_service("/streams", ServeDir::new("./output"))
+        .layer(middleware::from_fn(fix_mime_types));
     srv
 }
 
@@ -37,4 +45,23 @@ async fn shutdown() {
             println!("shutting down after recieveing a sigkil")
         }
     };
+}
+
+async fn fix_mime_types(req: Request, next: Next) -> Response {
+    let path = req.uri().path().to_string();
+
+    let mut response = next.run(req).await;
+
+    if path.ends_with(".m3u8") {
+        response.headers_mut().insert(
+            header::CONTENT_TYPE,
+            HeaderValue::from_static("application/vnd.apple.mpegurl"),
+        );
+    } else if path.ends_with(".ts") {
+        response
+            .headers_mut()
+            .insert(header::CONTENT_TYPE, HeaderValue::from_static("video/mp2t"));
+    }
+
+    response
 }

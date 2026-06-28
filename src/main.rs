@@ -1,13 +1,15 @@
+mod cli;
 mod ladder;
 mod manifest;
 mod probe;
 mod server;
 mod transcode;
-use std::env;
-use std::path::{Path, PathBuf};
-
+use crate::server::Server;
+use clap::Parser;
+use std::path::PathBuf;
 use uuid::Uuid;
 
+use crate::cli::{Cli, Commands};
 use crate::ladder::build_ladder_from_meta;
 use crate::manifest::write_master_playlist;
 use crate::probe::ProbeError;
@@ -16,28 +18,41 @@ use crate::transcode::{TranscodeError, transcode_all};
 #[tokio::main]
 async fn main() -> Result<(), ProbeError> {
     tracing_subscriber::fmt::init();
-    let args: Vec<String> = env::args().collect();
+    let cli = Cli::parse();
 
-    if args.len() < 2 {
-        panic!("path to video not specified");
-    }
+    match cli.command {
+        Commands::Transcode { path } => match probe::probe(&path) {
+            Ok(video_meta) => {
+                video_meta.summary();
+                let renditions = build_ladder_from_meta(&video_meta);
 
-    let path = Path::new(&args[1]);
+                let job_id = Uuid::new_v4().to_string();
 
-    match probe::probe(path) {
-        Ok(video_meta) => {
-            let renditions = build_ladder_from_meta(&video_meta);
-            let job_id = Uuid::new_v4().to_string();
+                let paths =
+                    transcode_all(path.to_path_buf(), job_id.clone(), renditions.clone()).await;
 
-            let paths = transcode_all(path.to_path_buf(), job_id.clone(), renditions.clone()).await;
+                handle_failures(&paths);
 
-            handle_failures(&paths);
+                write_master_playlist(&job_id, &renditions)
+                    .map_err(|e| ProbeError::ParseError(e.to_string()))?;
+            }
+            Err(e) => {
+                eprintln!("Error Occured: {}", e)
+            }
+        },
 
-            write_master_playlist(&job_id, &renditions)
+        Commands::Server { port } => {
+            let addr = format!("127.0.0.1:{}", port);
+
+            let server = Server::new(&addr)
+                .await
                 .map_err(|e| ProbeError::ParseError(e.to_string()))?;
-        }
-        Err(e) => {
-            eprintln!("Error Occured: {}", e)
+
+            println!("server listening on http://localhost:{}", port);
+            server
+                .run()
+                .await
+                .map_err(|e| ProbeError::ParseError(e.to_string()))?;
         }
     }
 
